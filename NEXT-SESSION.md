@@ -5,20 +5,22 @@ Read `EOL-PLAN.md` (canonical plan) and `README.md` (repo split) first.
 
 ## Where to start
 
-M1 and M2 are independent — pick per Eduard's priority that day:
+**M1 — ✅ SHIPPED + DEPLOYED 2026-07-10** (admin branch `feat/eol-m1` @ 1c95ec5,
+remote D1 migrated). What exists:
+- Tables `eol_units` / `eol_batches` / `eol_events` (migration `0024_eol.sql`).
+  Units have nullable-unique chip_id AND serial — a serial scanned before the
+  jig exists auto-creates its unit at 'overmoulded'. Batch `stage` covers the
+  bulk coat/mould steps. EOL transitions write through to serial_numbers.status.
+- `lib/eol.ts`: status machine + HMAC action tokens `SCEOL:<ACTION>:<sig10>`
+  (secret auto-generated into app_settings `eol_qr_secret`); batch cards
+  `SCEOLB:<code>`. EOL_PASS/REJECT double as manual test verdicts until M3/M4.
+- Pages: `/eol` scan hub (keyboard-wedge input, PASS/FAIL flash, desktop action
+  buttons), `/eol/batches` (create + batch QR print), `/eol/cards` (print the
+  signed station cards). APIs under `/api/eol/*` (session-auth).
+- TODO before factory use: operator smoke test in a logged-in browser; print +
+  laminate station cards; decide whether to merge `feat/eol-m1` to main.
 
-**M1 — data model + status pages (admin repo, no hardware needed)**
-- New D1 tables: `units` (chip_id PK, serial nullable, pin, mac, variant,
-  status, batch_id, fw_version, timestamps), `batches`, `unit_events`
-  (unit, station, operator, action, result, measurements_json, ts).
-- Status machine per EOL-PLAN §3 (extend the existing serials/status list —
-  today's serials table has the customer-facing statuses; decide merge vs
-  separate-table linking).
-- Minimal `/eol` pages: scan field (QR scanner = keyboard) → unit card →
-  action-QR transitions (COAT:DONE, MOULD:DONE, QA:PASS/REJECT, PACK:DONE)
-  with signed tokens. This alone makes coating/overmould/QA/packing live.
-- Deploy: `npm run db:migrate:remote` then `npm run cf:deploy` from the admin
-  repo (see its docs; ~27 pre-existing D1Database tsc errors are harmless).
+**M2 — next up** (independent of M1):
 
 **M2 — firmware blockers (firmware repo `D:\powifirmware`)**
 - FW-A: NV serial + per-device passkey + lock flag; provisioning BLE char
