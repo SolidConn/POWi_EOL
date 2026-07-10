@@ -20,19 +20,28 @@ remote D1 migrated). What exists:
 - TODO before factory use: operator smoke test in a logged-in browser; print +
   laminate station cards; decide whether to merge `feat/eol-m1` to main.
 
-**M2 — next up** (independent of M1):
-
-**M2 — firmware blockers (firmware repo `D:\powifirmware`)**
-- FW-A: NV serial + per-device passkey + lock flag; provisioning BLE char
-  (writable only unlocked); locked → passkey replaces fixed 012345.
-- FW-B: `eoltest` shell cmd — channel walk emitting `EOL:key=value` + `EOL:done`
-  over RTT (VBAT, temp, OUT3/4 IS mA per state, OUT1/2 ST-while-ON, CAN-frame
-  seen). Note: ST carries info ONLY while steady-ON on current PCB (no OFF-state
-  open-load — no Vbb->OUT pull-ups; see fw main.c matrix comment near st_poll).
-- FW-C: unprovisioned-advertising flag so Phase-2 web can find virgin modules.
-- Build/flash: exact procedure in app repo `SESSION-HANDOFF-2026-07-06.md` §1a
-  (env vars, west build, nrfjprog; RTT viewer must be closed to flash;
-  UNPLUG the probe for functional tests — attached probe can hold module dead).
+**M2 — ✅ CODE COMPLETE 2026-07-10, build-verified, NOT FLASHED** (firmware
+branch `eol-provisioning` @ b716afa, pushed; RAM 88.36% bench build):
+- FW-A `src/provision.c/h`: NV identity "prov/id" (serial + per-device passkey
+  + lock; survives customer factory reset). GATT svc c1a50060/61 — read =
+  ver/locked/serial; writes 0x01 stage / 0x02 lock / 0x03 clear-bonds
+  (WRITE_AUTHEN; stage/lock rejected once locked). `prov` shell cmd
+  (show/set/lock/wipe) = RTT rework/bench path. DIS serial settings-backed
+  (CONFIG_BT_DIS_SETTINGS, "bt/dis/serial"). ONE image serves every unit.
+- FW-B: `eoltest [can_wait_s]` in main.c — EOL:key=value walk (fw, FICR
+  chipid, serial/locked, vbat_mv, temp_dc, out1/2 ST-while-ON, out3/4 on_ma +
+  fault + is_mv, can_rx after waiting for the agent's PCAN traffic) + EOL:done=1.
+  ST carries info ONLY while steady-ON on this PCB (no Vbb->OUT pull-ups).
+- FW-C: unprovisioned name "POWi-XXXX" (identity-addr tail); provisioned =
+  bare serial (unchanged app contract). Adv name element rebuilt at each adv
+  start, so a lock applies without reboot. Phase-2 page: filter namePrefix
+  "POWi-", then confirm locked==0 by reading c1a50061 after connect.
+- ⚠️ BENCH VALIDATION PENDING (needs hardware): flash → expect "POWi-XXXX"
+  adv + PIN 012345 → `prov set 2625016 12345` + `prov lock` → verify serial
+  adv, app reconnect, DIS serial → `eoltest 5` with PCAN TX → check EOL: lines.
+  ⚠️ Flashing DEPROVISIONS the bench unit until prov set/lock is run.
+- Build/flash: procedure in app repo `SESSION-HANDOFF-2026-07-06.md` §1a
+  (RTT viewer must be closed to flash; UNPLUG probe for functional tests).
 
 **M3 — jig agent (this repo)** — after or alongside M2:
 - Python; pynrfjprog (flash + RTT), python-can (PCAN, TX self-ACK on 2-node
