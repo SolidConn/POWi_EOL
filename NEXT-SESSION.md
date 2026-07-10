@@ -1,7 +1,16 @@
-# EOL — first working session brief (written 2026-07-10)
+# EOL — working brief (updated 2026-07-10, end of day)
 
 You are in `D:\Solid Connectivity APPS\powi-eol` — the EOL project home.
 Read `EOL-PLAN.md` (canonical plan) and `README.md` (repo split) first.
+
+**SELF-CONTAINED BY DESIGN** — Eduard may continue from a different account:
+everything needed lives in the repos, none of it in session memory. Doc map:
+- This file + `EOL-PLAN.md` (canonical plan) — here.
+- Admin repo `EOL.md` — the /eol module AS-BUILT (schema, status machine, QR
+  token format, APIs, pages, admin ops, Phase-2 provisioning contract, deploy).
+- Firmware repo `HANDOFF.md` §"EOL provisioning + self-test" — FW-A/B/C
+  as-built (NV identity, GATT c1a50060/61 opcodes, eoltest, adv naming).
+- Build/flash/deploy procedures — app repo `SESSION-HANDOFF-2026-07-06.md` §1.
 
 ## Where to start
 
@@ -17,7 +26,17 @@ remote D1 migrated). What exists:
 - Pages: `/eol` scan hub (keyboard-wedge input, PASS/FAIL flash, desktop action
   buttons), `/eol/batches` (create + batch QR print), `/eol/cards` (print the
   signed station cards). APIs under `/api/eol/*` (session-auth).
-- TODO before factory use: operator smoke test in a logged-in browser; print +
+- Feedback rounds same day (all deployed, latest admin commit `c2cd4f3`):
+  per-DEVICE activity feed (expandable step history, batch steps merged in);
+  admin adjust/edit/delete everywhere (status override = audited ADMIN_ADJUST;
+  batch edit modal; deletes admin-gated); `eol_batches.external_ref` = Inventory
+  build ref (manual now, auto-fill via INVENTORY_INTEGRATION.md inbox later,
+  M5 stock-in keys on it); 📷 phone-as-scanner (in-page camera QR, continuous,
+  BarcodeDetector/jsQR); station-cards print CSS fix; **per-serial PINs
+  generated + printed + exported** (lib/pin.ts — closes the PIN-in-QR open
+  decision: QR/label/CSV carry the real per-device PIN).
+- Full as-built reference: admin repo `EOL.md`.
+- TODO before factory use: operator dry run (phone camera or scanner); print +
   laminate station cards; decide whether to merge `feat/eol-m1` to main.
 
 **M2 — ✅ CODE COMPLETE 2026-07-10, build-verified, NOT FLASHED** (firmware
@@ -54,8 +73,10 @@ inventory system; PIN-in-QR content; label printing flow; Phase-1 second flash
 (EOL image then production image — recommended yes); operator identity;
 per-batch-only tracking through coating/overmould.
 
-## Cross-repo state as of 2026-07-10
-- firmware `control-page-gestures` @ 71f7c54 (flashed on 2625016), app
-  `control-ux-and-can-sync` @ defaab8, admin `feat/recipe-binary-compiler`
-  (deployed). None merged to main. OTA bins stale (bump to 1.0.5 before OTA).
+## Cross-repo state as of 2026-07-10 (end of day)
+- firmware: `eol-provisioning` @ 7af850c (EOL work, NOT flashed) on top of
+  `control-page-gestures` @ 71f7c54 (what IS flashed on 2625016).
+- admin: `feat/eol-m1` @ c2cd4f3 DEPLOYED to app.solidconnectivity.com.
+- app: `control-ux-and-can-sync` @ defaab8. None merged to main.
+  OTA bins stale (bump to 1.0.5 before OTA).
 - Vehicle-capture feature: Audi real-data capture pending this week.

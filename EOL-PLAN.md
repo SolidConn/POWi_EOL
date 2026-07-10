@@ -136,6 +136,13 @@ jig agent — Phase 2 uses only its CAN capability). No SWD.
 
 ## 6. Firmware prerequisites (firmware repo, blockers for everything above)
 
+> **AS-BUILT 2026-07-10 (branch `eol-provisioning`, build-verified, not flashed):**
+> all three items below are code-complete. Provisioning = GATT svc `c1a50060`,
+> char `c1a50061` (read ver/locked/serial; write 0x01 stage [pin u32 LE + serial],
+> 0x02 lock, 0x03 clear-bonds) + `prov` RTT shell cmd; `eoltest [can_wait_s]`
+> prints the EOL: walk; unprovisioned adv name = `POWi-XXXX`, provisioned = bare
+> serial. Details: firmware `HANDOFF.md` §EOL + admin repo `EOL.md`.
+
 - **FW-A — provisioning**: NV fields for serial + passkey + lock flag; a
   provisioning BLE characteristic writable ONLY while unlocked; once locked,
   the per-device passkey replaces the fixed 012345 and the characteristic goes
@@ -173,9 +180,10 @@ M1 and M2 are independent and can go in parallel sessions.
 ## 8. Open decisions
 
 1. **Inventory system** — which one? (Defines the M5 hook: API, webhook, CSV?)
-2. **PIN in the label QR** alongside serial (customer-scan convenience, matches
-   current app flow) vs serial-only QR + printed PIN — current app design
-   assumes serial+PIN in QR; keep?
+2. ~~**PIN in the label QR**~~ **DECIDED + SHIPPED 2026-07-10**: serial+PIN stay
+   in the QR (matches the app flow). Per-serial 6-digit PINs are auto-generated
+   at serial creation in the admin (lib/pin.ts; weak patterns excluded), carried
+   by QR + printed label + label CSV; 012345 only while unassigned.
 3. **Label printing** — where do labels come from? Natural fit: admin generates
    serial+PIN and renders the label PDF/ZPL at "batch label print" time (before
    Phase 2); then the DB is by construction the source the label is checked
