@@ -68,7 +68,18 @@ branch `eol-provisioning` @ b716afa, pushed; RAM 88.36% bench build):
   nRF54L15). STILL TO VERIFY (needs phone, probe unplugged): app finds/pairs
   "2625016" with PIN 012345, DIS serial reads 2625016, and a Web-Bluetooth/
   nRF-Connect look at the "POWi-XXXX" unprovisioned advertising on a virgin
-  flash. ⚠️ CAN leg of eoltest untested (no PCAN attached — ran `eoltest 0`).
+  flash. ✅ CAN leg VALIDATED 2026-07-10 evening: `eol-agent/can_stim.py`
+  (python-can @ PCAN_USBBUS1, 500k classical, the embedded Amarok recipe's 5
+  frame IDs 0x083/0x203/0x3B3/0x3C3/0x3D8 at 20 Hz, receive_own_messages)
+  transmitted in the background while `eoltest 5` ran → can_rx=1 CONNECTED
+  rx_rate=3629, and can_listen drove CH1-4 ON/OFF end-to-end (CH4 0.7 A real).
+  KEY TIMING LESSON for M3: CAN TX must be flowing BEFORE eoltest starts, or
+  the sampling window misses it (two NO SIGNAL runs before this). Same session:
+  full-erase→reflash lifecycle proven on 18e68de320bc798d (was 2625016) —
+  `--eraseall` + bootloader + zephyr.signed.hex (NOT merged.hex — NV must stay
+  blank) came up virgin; OUT3 read a real 456 mA (erase wiped the persisted
+  PWM config that caused SETTLING). Module deliberately LEFT UNPROVISIONED —
+  provisioning belongs at end of Phase 2, per the flow.
 - Build/flash: procedure in app repo `SESSION-HANDOFF-2026-07-06.md` §1a
   (RTT viewer must be closed to flash; UNPLUG probe for functional tests).
 
@@ -77,11 +88,39 @@ branch `eol-provisioning` @ b716afa, pushed; RAM 88.36% bench build):
   bus), WebSocket server localhost:9151, PyInstaller one-file exe.
 - Contract with the /eol page: session open → program → chip-id → eoltest →
   limits verdict → POST results to admin API.
+- ✅ CORE PIPELINE PROVEN 2026-07-11 00:04 on bench: `eol-agent/eol_run.py
+  --flash` = flash (bootloader + signed app) → CAN stim thread → RTT eoltest →
+  parse → limits.json verdict, **PASS in 27.0 s** (chip 18e68de320bc798d, all
+  green, can_rx=1 rate 3625). Seeds: rtt_shell.py (RTT), can_stim.py (CAN).
+  REMAINING for M3: WebSocket server 9151 + /eol page orchestration; unit
+  row creation keyed on chip_id (needs admin API); measurements POST into
+  eol_events; firmware from the admin registry instead of local paths —
+  Eduard's direction 2026-07-11: bootloader + Phase-1 EOL image (shell+RTT
+  build) + production image live per-model in the admin firmware lines
+  (add an "eol" line type); the session-authed /eol page downloads hexes and
+  hands them to the agent over ws with sha256 (agent caches by hash, no
+  station credentials). Second-flash policy (decision #4) rides on this:
+  EOL image → test → PASS → flash production image → coating.
+
+**M1.5 — batch lifecycle redesign (admin, 2026-07-10 evening)**: Eduard's
+factory-flow rework, implemented on feat/eol-m1. Phase-1 verdicts on bare PCBs
+are now COUNTED batch scans (no per-unit QR — PCBs have no identity pre-M3):
+PHASE1_START opens the session, EOL_PASS/EOL_REJECT scans count one PCB each,
+auto-complete to phase1_done at size. COAT_DONE/MOULD_DONE replaced by
+START/FINISH pairs (timestamps = cure/cycle time). New batch stages:
+created→phase1→phase1_done→coating→coated→moulding→overmoulded→closed.
+Old COAT/MOULD cards are invalid — REPRINT from /eol/cards. Per-unit tracking
+still begins at the Phase-2 label scan (auto-create at overmoulded). Same
+round: OPERATOR BADGES (closes open decision #5, name-only per Eduard):
+SCEOLOP:<code>:<sig> personal QRs, scan once per station (sticky 4 h), every
+transition requires one and logs the name; managed/printed on /eol/cards
+(eol_operators, migration 0025). Details: admin EOL.md.
 
 ## Open decisions still needing Eduard (EOL-PLAN §8)
-inventory system; PIN-in-QR content; label printing flow; Phase-1 second flash
-(EOL image then production image — recommended yes); operator identity;
-per-batch-only tracking through coating/overmould.
+inventory system; label printing flow; Phase-1 second flash (EOL image then
+production image — recommended yes). CLOSED 2026-07-10: PIN-in-QR (shipped),
+operator identity (badge QRs, name-only), per-batch tracking through
+coat/mould (formalized as counted phase1 + start/finish stages).
 
 ## Cross-repo state as of 2026-07-10 (end of day)
 - firmware: `eol-provisioning` @ 7af850c (EOL work, NOT flashed) on top of

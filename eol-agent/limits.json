@@ -1,0 +1,19 @@
+{
+  "_comment": "Phase-1 EOL limits. Bench-load values from the validated 2026-07-10 run (OUT3 456 mA, OUT4 1522 mA @ 11.76 V). Adjust per jig fixture loads; will move to an admin-versioned table (M5).",
+  "version": 1,
+  "checks": {
+    "vbat_mv":        { "min": 9000,  "max": 15000 },
+    "temp_dc":        { "min": 50,    "max": 600 },
+    "out1_st":        { "equals": "ok", "skip_values": ["skip_chopped"] },
+    "out2_st":        { "equals": "ok", "skip_values": ["skip_chopped"] },
+    "out3_on_ma":     { "min": 250,   "max": 800 },
+    "out3_on_status": { "equals": "OK" },
+    "out3_fault":     { "equals": "OK" },
+    "out4_on_ma":     { "min": 1200,  "max": 1900 },
+    "out4_on_status": { "equals": "OK" },
+    "out4_fault":     { "equals": "OK" },
+    "can_rx":         { "equals": "1" },
+    "can_rx_rate":    { "min": 1 }
+  },
+  "required_keys": ["chipid", "fw", "vbat_mv", "temp_dc", "can_rx"]
+}
