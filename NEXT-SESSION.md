@@ -55,10 +55,20 @@ branch `eol-provisioning` @ b716afa, pushed; RAM 88.36% bench build):
   bare serial (unchanged app contract). Adv name element rebuilt at each adv
   start, so a lock applies without reboot. Phase-2 page: filter namePrefix
   "POWi-", then confirm locked==0 by reading c1a50061 after connect.
-- ⚠️ BENCH VALIDATION PENDING (needs hardware): flash → expect "POWi-XXXX"
-  adv + PIN 012345 → `prov set 2625016 12345` + `prov lock` → verify serial
-  adv, app reconnect, DIS serial → `eoltest 5` with PCAN TX → check EOL: lines.
-  ⚠️ Flashing DEPROVISIONS the bench unit until prov set/lock is run.
+- ✅ BENCH-VALIDATED over RTT 2026-07-10 (flashed on 2625016): fresh flash came
+  up unprovisioned (serial unset/locked 0/default PIN); `eoltest 0` emitted the
+  full EOL: walk (chipid=18e68de320bc798d, vbat 11.7 V, temp 34.2 °C, OUT1/2
+  ST ok, OUT4 1535 mA real load; OUT3 = SETTLING because the bench unit has a
+  persisted PWM config — chopped channels are deliberately distrusted; virgin
+  units are static → fine, but the M3 agent/limits must treat a chopped
+  channel as "skip", or eoltest could force static first); `prov set 2625016
+  12345` + `prov lock` restored identity and it SURVIVED a cold reset.
+  Validation used pylink RTT (scratch script = seed of the M3 agent's RTT
+  layer; pylink needs lib=JLink_V824\JLink_x64.dll — bundled DLL too old for
+  nRF54L15). STILL TO VERIFY (needs phone, probe unplugged): app finds/pairs
+  "2625016" with PIN 012345, DIS serial reads 2625016, and a Web-Bluetooth/
+  nRF-Connect look at the "POWi-XXXX" unprovisioned advertising on a virgin
+  flash. ⚠️ CAN leg of eoltest untested (no PCAN attached — ran `eoltest 0`).
 - Build/flash: procedure in app repo `SESSION-HANDOFF-2026-07-06.md` §1a
   (RTT viewer must be closed to flash; UNPLUG probe for functional tests).
 
