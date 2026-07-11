@@ -68,7 +68,16 @@ branch `eol-provisioning` @ b716afa, pushed; RAM 88.36% bench build):
   nRF54L15). STILL TO VERIFY (needs phone, probe unplugged): app finds/pairs
   "2625016" with PIN 012345, DIS serial reads 2625016, and a Web-Bluetooth/
   nRF-Connect look at the "POWi-XXXX" unprovisioned advertising on a virgin
-  flash. ✅ CAN leg VALIDATED 2026-07-10 evening: `eol-agent/can_stim.py`
+  flash. ✅ ADVERTISING-BY-SERIAL VALIDATED 2026-07-11: after the full
+  from-scratch cycle (erase → agent flash+test → prov set 2625016/lock →
+  cold power cycle survived) Eduard's phone saw the module advertising as
+  bare "2625016". STILL OPEN (deferred by Eduard — unit kept customer-clean):
+  actual pair with PIN 012345 + DIS serial read. ⚠️ NEW BLOCKER NOTED:
+  build-prod/ on disk predates eol-provisioning (built 07-07) — a customer-
+  ready unit needs the PROD config REBUILT from the eol-provisioning branch
+  (prod image would otherwise ignore the NV identity); ties into 1.1.0
+  hardening (final MCUboot key, FPROTECT, RTT off). ✅ CAN leg VALIDATED
+  2026-07-10 evening: `eol-agent/can_stim.py`
   (python-can @ PCAN_USBBUS1, 500k classical, the embedded Amarok recipe's 5
   frame IDs 0x083/0x203/0x3B3/0x3C3/0x3D8 at 20 Hz, receive_own_messages)
   transmitted in the background while `eoltest 5` ran → can_rx=1 CONNECTED
