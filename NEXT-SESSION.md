@@ -92,9 +92,15 @@ branch `eol-provisioning` @ b716afa, pushed; RAM 88.36% bench build):
   --flash` = flash (bootloader + signed app) → CAN stim thread → RTT eoltest →
   parse → limits.json verdict, **PASS in 27.0 s** (chip 18e68de320bc798d, all
   green, can_rx=1 rate 3625). Seeds: rtt_shell.py (RTT), can_stim.py (CAN).
-  REMAINING for M3: WebSocket server 9151 + /eol page orchestration; unit
-  row creation keyed on chip_id (needs admin API); measurements POST into
-  eol_events; firmware from the admin registry instead of local paths —
+  ✅ WS BRIDGE LIVE 2026-07-11 morning: agent.py (ws://localhost:9151) +
+  /eol page block "Jig agent connected / ▶ Program + Test PCB" — Eduard ran
+  the FIRST FULLY AUTOMATIC PCB (flash→CAN→eoltest→verdict auto-recorded
+  with badge + chip id + measurements_json into the phase-1 counter).
+  Agent start: `python eol-agent/agent.py` on the jig PC.
+  REMAINING for M3 (priority per Eduard): auto-start on board detection
+  (kills the button click; also answers his wish to trigger by QR/phone);
+  unit row creation keyed on chip_id (needs admin API); firmware from the
+  admin registry instead of local paths —
   Eduard's direction 2026-07-11: bootloader + Phase-1 EOL image (shell+RTT
   build) + production image live per-model in the admin firmware lines
   (add an "eol" line type); the session-authed /eol page downloads hexes and
