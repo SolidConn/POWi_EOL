@@ -59,15 +59,15 @@ def nrfjprog(*args, timeout=120):
     return r.stdout
 
 
-def flash(recover=False):
+def flash(recover=False, on_step=step):
     if recover:
-        step("flash", "recover (full erase)")
+        on_step("flash", "recover (full erase)")
         nrfjprog("--recover")
-    step("flash", f"program bootloader {BOOT_HEX.name}")
+    on_step("flash", f"program bootloader {BOOT_HEX.name}")
     nrfjprog("--program", str(BOOT_HEX), "--sectorerase", "--verify")
-    step("flash", f"program app {APP_HEX.name}")
+    on_step("flash", f"program app {APP_HEX.name}")
     nrfjprog("--program", str(APP_HEX), "--sectorerase", "--verify")
-    step("flash", "reset")
+    on_step("flash", "reset")
     nrfjprog("--reset")
     time.sleep(2.0)   # let the app boot before RTT attach
 
@@ -187,33 +187,29 @@ def check_limits(values, limits):
 
 # ── Pipeline ──────────────────────────────────────────────────────────────────
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--flash", action="store_true", help="program bootloader+app before testing")
-    ap.add_argument("--recover", action="store_true", help="full recover (erase) + program + test")
-    ap.add_argument("--no-can", action="store_true", help="skip CAN stimulus (eoltest 0)")
-    args = ap.parse_args()
-
+def run_pipeline(do_flash=False, recover=False, use_can=True, on_step=step):
+    """Full Phase-1 cycle. Returns the report dict; never raises — any error
+    becomes verdict=ERROR with the reason. `on_step(name, msg)` streams progress."""
     t0 = time.time()
     limits = json.loads((HERE / "limits.json").read_text())
     report = {"started": time.strftime("%Y-%m-%dT%H:%M:%S"), "limits_version": limits["version"]}
 
     try:
-        if args.flash or args.recover:
-            flash(recover=args.recover)
+        if do_flash or recover:
+            flash(recover=recover, on_step=on_step)
             report["flashed"] = True
 
         can_thread = None
-        can_wait = 0 if args.no_can else CAN_WAIT_S
-        if not args.no_can:
-            step("can", f"stimulus on {PCAN_CHANNEL} @ {CAN_BITRATE}")
+        can_wait = CAN_WAIT_S if use_can else 0
+        if use_can:
+            on_step("can", f"stimulus on {PCAN_CHANNEL} @ {CAN_BITRATE}")
             can_thread = CanStim()
             can_thread.start()
             time.sleep(1.0)              # traffic flowing BEFORE eoltest starts
             if can_thread.error:
                 raise RuntimeError(f"CAN stimulus failed: {can_thread.error}")
 
-        step("eoltest", f"running (can_wait={can_wait})")
+        on_step("eoltest", f"running (can_wait={can_wait})")
         values = run_eoltest(can_wait)
 
         if can_thread:
@@ -235,7 +231,18 @@ def main():
         report["error"] = str(e)
 
     report["elapsed_s"] = round(time.time() - t0, 1)
-    step("verdict", report["verdict"])
+    on_step("verdict", report["verdict"])
+    return report
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--flash", action="store_true", help="program bootloader+app before testing")
+    ap.add_argument("--recover", action="store_true", help="full recover (erase) + program + test")
+    ap.add_argument("--no-can", action="store_true", help="skip CAN stimulus (eoltest 0)")
+    args = ap.parse_args()
+
+    report = run_pipeline(do_flash=args.flash, recover=args.recover, use_can=not args.no_can)
     print(json.dumps(report, indent=2))
     sys.exit(0 if report["verdict"] == "PASS" else 1)
 
