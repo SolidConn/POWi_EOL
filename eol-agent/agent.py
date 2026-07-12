@@ -178,7 +178,9 @@ async def handle(ws):
 
 async def main():
     print(f"EOL jig agent v{VERSION} — ws://localhost:{PORT}")
-    async with websockets.serve(handle, "localhost", PORT):
+    # max_size: staged firmware hexes arrive base64-encoded (~1.5 MB) — the
+    # library default of 1 MB kills the connection mid-transfer.
+    async with websockets.serve(handle, "localhost", PORT, max_size=32 * 1024 * 1024):
         await asyncio.Future()
 
 
