@@ -17,10 +17,11 @@ Run on the jig PC:  python agent.py
 import asyncio
 import json
 import threading
+import time
 
 import websockets
 
-from eol_run import run_pipeline
+from eol_run import run_pipeline, CanStim
 
 VERSION = "0.1"
 PORT = 9151
@@ -64,6 +65,44 @@ async def handle(ws):
                     loop.call_soon_threadsafe(queue.put_nowait, None)   # end of stream
 
             threading.Thread(target=worker, daemon=True).start()
+            while True:
+                item = await queue.get()
+                if item is None:
+                    break
+                await ws.send(json.dumps(item))
+
+        elif cmd == "canstim":
+            # CAN stimulus only (Phase 2: the page reads BLE telemetry while
+            # the recipe frames flow). No probe involved.
+            seconds = min(max(float(msg.get("seconds", 5)), 1), 30)
+            if not run_lock.acquire(blocking=False):
+                await ws.send(json.dumps({"event": "error", "message": "busy"}))
+                continue
+            loop = asyncio.get_running_loop()
+            queue: asyncio.Queue = asyncio.Queue()
+
+            def can_worker():
+                try:
+                    stim = CanStim()
+                    stim.start()
+                    time.sleep(0.5)
+                    if stim.error:
+                        loop.call_soon_threadsafe(queue.put_nowait,
+                            {"event": "canstim", "state": "error", "message": stim.error})
+                    else:
+                        loop.call_soon_threadsafe(queue.put_nowait,
+                            {"event": "canstim", "state": "started"})
+                        time.sleep(seconds)
+                    stim.stop_evt.set()
+                    stim.join(timeout=2)
+                    loop.call_soon_threadsafe(queue.put_nowait,
+                        {"event": "canstim", "state": "done", "sent": stim.sent,
+                         "error": stim.error})
+                finally:
+                    run_lock.release()
+                    loop.call_soon_threadsafe(queue.put_nowait, None)
+
+            threading.Thread(target=can_worker, daemon=True).start()
             while True:
                 item = await queue.get()
                 if item is None:
