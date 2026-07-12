@@ -22,6 +22,7 @@ import time
 import websockets
 
 from eol_run import run_pipeline, CanStim
+from phase2 import run_phase2
 
 VERSION = "0.1"
 PORT = 9151
@@ -108,6 +109,31 @@ async def handle(ws):
                 if item is None:
                     break
                 await ws.send(json.dumps(item))
+
+        elif cmd == "phase2":
+            # Full Phase-2 cycle over the PC's own BLE radio: test -> verdict ->
+            # provision on PASS. Fully automatic (no picker/pairing).
+            if not run_lock.acquire(blocking=False):
+                await ws.send(json.dumps({"event": "error", "message": "busy"}))
+                continue
+            try:
+                q: asyncio.Queue = asyncio.Queue()
+
+                def on_step(n, m=""):
+                    q.put_nowait({"event": "step", "name": n, "msg": m})
+
+                task = asyncio.create_task(run_phase2(
+                    str(msg.get("serial", "")), str(msg.get("pin", "")),
+                    on_step, dry=bool(msg.get("dry", False))))
+                while not (task.done() and q.empty()):
+                    try:
+                        item = await asyncio.wait_for(q.get(), timeout=0.2)
+                        await ws.send(json.dumps(item))
+                    except asyncio.TimeoutError:
+                        pass
+                await ws.send(json.dumps({"event": "result", "report": task.result()}))
+            finally:
+                run_lock.release()
 
         else:
             await ws.send(json.dumps({"event": "error", "message": f"unknown cmd '{cmd}'"}))
