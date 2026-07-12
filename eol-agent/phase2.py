@@ -63,6 +63,7 @@ async def run_phase2(serial: str, pin: str, on_step=lambda n, m="": None, dry=Fa
         if len(candidates) > 1:
             on_step("scan", f"{len(candidates)} modules in range — taking strongest ({name} @ {rssi} dBm)")
         on_step("connect", f"{name} ({dev.address}, {rssi} dBm)")
+        report["mac"] = dev.address
 
         async with BleakClient(dev, timeout=15.0) as client:
             st = await client.read_gatt_char(PROV_CHAR)
