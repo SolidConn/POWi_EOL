@@ -190,7 +190,8 @@ def check_limits(values, limits):
 # ── Pipeline ──────────────────────────────────────────────────────────────────
 
 def run_pipeline(do_flash=False, recover=False, use_can=True, on_step=step,
-                 boot_hex=None, app_hex=None, fw_version=None):
+                 boot_hex=None, app_hex=None, fw_version=None,
+                 prod_hex=None, prod_version=None):
     """Full Phase-1 cycle. Returns the report dict; never raises — any error
     becomes verdict=ERROR with the reason. `on_step(name, msg)` streams progress.
     boot_hex/app_hex override the local default images (admin-staged firmware)."""
@@ -231,6 +232,14 @@ def run_pipeline(do_flash=False, recover=False, use_can=True, on_step=step,
         report["failures"] = failures
         report["skipped"] = skipped
         report["verdict"] = "PASS" if not failures else "FAIL"
+
+        # Second flash (EOL-PLAN decision #4): a PASSED board leaves the jig
+        # wearing the customer application, never the shell/RTT EOL image.
+        if report["verdict"] == "PASS" and prod_hex:
+            on_step("flash", f"production image {prod_version or ''} (replacing EOL image)")
+            nrfjprog("--program", str(prod_hex), "--sectorerase", "--verify")
+            nrfjprog("--reset")
+            report["production_flashed"] = prod_version or True
 
     except Exception as e:               # noqa: BLE001 — any pipeline error is a FAIL with reason
         report["verdict"] = "ERROR"

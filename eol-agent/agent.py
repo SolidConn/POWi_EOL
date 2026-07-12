@@ -36,7 +36,7 @@ run_lock = threading.Lock()
 # from the admin and pushes them here (sha-keyed cache, survives restarts).
 FW_CACHE = Path(__file__).parent / "fw_cache"
 FW_CACHE.mkdir(exist_ok=True)
-staged_fw = {"boot": None, "app": None, "versions": {}}   # role -> cached path
+staged_fw = {"boot": None, "app": None, "prod": None, "versions": {}}   # role -> cached path
 
 
 async def handle(ws):
@@ -96,6 +96,8 @@ async def handle(ws):
                         on_step=on_step,
                         boot_hex=staged_fw["boot"], app_hex=staged_fw["app"],
                         fw_version=staged_fw["versions"].get("app"),
+                        prod_hex=staged_fw["prod"],
+                        prod_version=staged_fw["versions"].get("prod"),
                     )
                     loop.call_soon_threadsafe(queue.put_nowait, {"event": "result", "report": report})
                 finally:
