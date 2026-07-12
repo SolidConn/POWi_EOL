@@ -59,14 +59,16 @@ def nrfjprog(*args, timeout=120):
     return r.stdout
 
 
-def flash(recover=False, on_step=step):
+def flash(recover=False, on_step=step, boot_hex=None, app_hex=None):
+    boot = Path(boot_hex) if boot_hex else BOOT_HEX
+    app = Path(app_hex) if app_hex else APP_HEX
     if recover:
         on_step("flash", "recover (full erase)")
         nrfjprog("--recover")
-    on_step("flash", f"program bootloader {BOOT_HEX.name}")
-    nrfjprog("--program", str(BOOT_HEX), "--sectorerase", "--verify")
-    on_step("flash", f"program app {APP_HEX.name}")
-    nrfjprog("--program", str(APP_HEX), "--sectorerase", "--verify")
+    on_step("flash", f"program bootloader {boot.name}")
+    nrfjprog("--program", str(boot), "--sectorerase", "--verify")
+    on_step("flash", f"program app {app.name}")
+    nrfjprog("--program", str(app), "--sectorerase", "--verify")
     on_step("flash", "reset")
     nrfjprog("--reset")
     time.sleep(2.0)   # let the app boot before RTT attach
@@ -187,17 +189,21 @@ def check_limits(values, limits):
 
 # ── Pipeline ──────────────────────────────────────────────────────────────────
 
-def run_pipeline(do_flash=False, recover=False, use_can=True, on_step=step):
+def run_pipeline(do_flash=False, recover=False, use_can=True, on_step=step,
+                 boot_hex=None, app_hex=None, fw_version=None):
     """Full Phase-1 cycle. Returns the report dict; never raises — any error
-    becomes verdict=ERROR with the reason. `on_step(name, msg)` streams progress."""
+    becomes verdict=ERROR with the reason. `on_step(name, msg)` streams progress.
+    boot_hex/app_hex override the local default images (admin-staged firmware)."""
     t0 = time.time()
     limits = json.loads((HERE / "limits.json").read_text())
     report = {"started": time.strftime("%Y-%m-%dT%H:%M:%S"), "limits_version": limits["version"]}
 
     try:
         if do_flash or recover:
-            flash(recover=recover, on_step=on_step)
+            flash(recover=recover, on_step=on_step, boot_hex=boot_hex, app_hex=app_hex)
             report["flashed"] = True
+            if fw_version:
+                report["fw_version"] = fw_version
 
         can_thread = None
         can_wait = CAN_WAIT_S if use_can else 0

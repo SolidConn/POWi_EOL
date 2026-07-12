@@ -15,19 +15,28 @@ HTTPS page — localhost is a trustworthy origin (EOL-PLAN §1).
 Run on the jig PC:  python agent.py
 """
 import asyncio
+import base64
+import hashlib
 import json
 import threading
 import time
+from pathlib import Path
 
 import websockets
 
 from eol_run import run_pipeline, CanStim
 from phase2 import run_phase2
 
-VERSION = "0.1"
+VERSION = "0.2"
 PORT = 9151
 
 run_lock = threading.Lock()
+
+# Admin-staged firmware: the /eol page downloads the latest PUBLISHED hexes
+# from the admin and pushes them here (sha-keyed cache, survives restarts).
+FW_CACHE = Path(__file__).parent / "fw_cache"
+FW_CACHE.mkdir(exist_ok=True)
+staged_fw = {"boot": None, "app": None, "versions": {}}   # role -> cached path
 
 
 async def handle(ws):
@@ -40,7 +49,33 @@ async def handle(ws):
 
         cmd = msg.get("cmd")
         if cmd == "status":
-            await ws.send(json.dumps({"event": "status", "busy": run_lock.locked(), "version": VERSION}))
+            await ws.send(json.dumps({
+                "event": "status", "busy": run_lock.locked(), "version": VERSION,
+                "staged_fw": staged_fw["versions"],
+                "cached_shas": [p.stem for p in FW_CACHE.glob("*.hex")],
+            }))
+
+        elif cmd == "firmware":
+            # Stage admin firmware: [{role: boot|app, version, sha256, data_b64?}]
+            # data may be omitted when the sha is already in the cache.
+            try:
+                versions = {}
+                for f in msg.get("files", []):
+                    role = f["role"]
+                    sha = f["sha256"].lower()
+                    path = FW_CACHE / f"{sha}.hex"
+                    if not path.exists():
+                        data = base64.b64decode(f["data_b64"])
+                        actual = hashlib.sha256(data).hexdigest()
+                        if actual != sha:
+                            raise ValueError(f"{role}: sha mismatch (got {actual[:12]}…)")
+                        path.write_bytes(data)
+                    staged_fw[role] = str(path)
+                    versions[role] = f.get("version", "?")
+                staged_fw["versions"] = versions
+                await ws.send(json.dumps({"event": "firmware", "state": "staged", "versions": versions}))
+            except Exception as e:      # noqa: BLE001 — staging errors go to the page
+                await ws.send(json.dumps({"event": "firmware", "state": "error", "message": str(e)}))
 
         elif cmd == "run":
             if not run_lock.acquire(blocking=False):
@@ -59,6 +94,8 @@ async def handle(ws):
                         recover=bool(msg.get("recover", False)),
                         use_can=bool(msg.get("can", True)),
                         on_step=on_step,
+                        boot_hex=staged_fw["boot"], app_hex=staged_fw["app"],
+                        fw_version=staged_fw["versions"].get("app"),
                     )
                     loop.call_soon_threadsafe(queue.put_nowait, {"event": "result", "report": report})
                 finally:
