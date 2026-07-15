@@ -7,6 +7,9 @@ Protocol (JSON messages):
   -> {"cmd": "run", "flash": true, "recover": false, "can": true}
   <- {"event": "step", "name": "flash", "msg": "program bootloader ..."}   (streamed)
   <- {"event": "result", "report": { verdict, chip_id, measurements, ... }}
+  -> {"cmd": "wipe", "mode": "identity"|"erase"}   (engineering/rework, admin/eng only)
+  <- {"event": "step", "name": "wipe", "msg": "..."}                       (streamed)
+  <- {"event": "result", "report": { ok, mode, serial_after, locked_after, ... }}
 
 One run at a time (a jig has one probe); a `run` while busy returns
 {"event":"error","message":"busy"}. Chrome allows ws://localhost from an
@@ -24,10 +27,10 @@ from pathlib import Path
 
 import websockets
 
-from eol_run import run_pipeline, CanStim
+from eol_run import run_pipeline, CanStim, wipe_module
 from phase2 import run_phase2
 
-VERSION = "0.2"
+VERSION = "0.3"
 PORT = 9151
 
 run_lock = threading.Lock()
@@ -105,6 +108,37 @@ async def handle(ws):
                     loop.call_soon_threadsafe(queue.put_nowait, None)   # end of stream
 
             threading.Thread(target=worker, daemon=True).start()
+            while True:
+                item = await queue.get()
+                if item is None:
+                    break
+                await ws.send(json.dumps(item))
+
+        elif cmd == "wipe":
+            # Engineering/rework SWD wipe (admin/engineer gated on the page).
+            # mode=identity → prov wipe (keep firmware); mode=erase → full recover.
+            mode = msg.get("mode", "identity")
+            if mode not in ("identity", "erase"):
+                await ws.send(json.dumps({"event": "error", "message": f"bad wipe mode '{mode}'"}))
+                continue
+            if not run_lock.acquire(blocking=False):
+                await ws.send(json.dumps({"event": "error", "message": "busy"}))
+                continue
+            loop = asyncio.get_running_loop()
+            queue = asyncio.Queue()
+
+            def on_step(name, m="", _q=queue, _loop=loop):
+                _loop.call_soon_threadsafe(_q.put_nowait, {"event": "step", "name": name, "msg": m})
+
+            def wipe_worker(_mode=mode, _q=queue, _loop=loop, _on_step=on_step):
+                try:
+                    report = wipe_module(mode=_mode, on_step=_on_step)
+                    _loop.call_soon_threadsafe(_q.put_nowait, {"event": "result", "report": report})
+                finally:
+                    run_lock.release()
+                    _loop.call_soon_threadsafe(_q.put_nowait, None)
+
+            threading.Thread(target=wipe_worker, daemon=True).start()
             while True:
                 item = await queue.get()
                 if item is None:

@@ -154,6 +154,120 @@ def run_eoltest(can_wait_s):
     return values
 
 
+# ── Wipe (engineering / rework over SWD) ──────────────────────────────────────
+# Two paths, both probe-only (no BLE, no PIN — the recovery route):
+#   identity : firmware `prov wipe` over RTT — clears just the NV serial + PIN,
+#              keeps the image; module returns to the virgin POWi-XXXX / 012345
+#              state. Needs the shell/RTT build flashed (a production image has
+#              no shell — that case is detected and reported).
+#   erase    : nrfjprog --recover — mass-erase + APPROTECT unlock; wipes
+#              EVERYTHING (firmware, identity, bonds). Board is left blank and
+#              must be reflashed (Program + Test).
+
+def _rtt_open(settle=1.2):
+    import pylink
+    lib = pylink.library.Library(JLINK_DLL)
+    jl = pylink.JLink(lib=lib)
+    jl.open()
+    jl.set_tif(pylink.enums.JLinkInterfaces.SWD)
+    jl.connect(DEVICE, speed=4000)
+    jl.rtt_start(None)
+    for _ in range(50):
+        try:
+            if jl.rtt_get_num_up_buffers() > 0:
+                break
+        except pylink.errors.JLinkRTTException:
+            pass
+        time.sleep(0.1)
+    # A fresh connect can reset the target — drain the boot-log backlog and let
+    # the shell come up before the first command, or the write races the boot.
+    end = time.time() + settle
+    while time.time() < end:
+        if not jl.rtt_read(0, 4096):
+            time.sleep(0.05)
+    return jl
+
+
+def _rtt_cmd(jl, cmd, settle=1.5):
+    """Send one shell line, return everything received during `settle` s with
+    ANSI escapes stripped (firmware log lines interleave the shell output)."""
+    payload = (cmd + "\n").encode()
+    written = 0
+    while written < len(payload):
+        written += jl.rtt_write(0, list(payload[written:]))
+        time.sleep(0.01)
+    out = ""
+    deadline = time.time() + settle
+    while time.time() < deadline:
+        data = jl.rtt_read(0, 4096)
+        if data:
+            out += bytes(data).decode("utf-8", errors="replace")
+        else:
+            time.sleep(0.05)
+    return re.sub(r"\x1b\[[0-9;]*m|\r", "", out)
+
+
+def _grep1(text, field):
+    m = re.search(rf"^{field}\s*:\s*(.+)$", text, re.M)
+    return m.group(1).strip() if m else None
+
+
+def wipe_identity(on_step=step):
+    """Clear the NV identity (serial + PIN) via `prov wipe`, then reset the
+    module into the virgin advertising state. Keeps the firmware image."""
+    on_step("wipe", "connect over SWD/RTT")
+    jl = _rtt_open()
+    try:
+        on_step("wipe", "prov wipe")
+        out = _rtt_cmd(jl, "prov wipe", settle=2.0)
+        if "identity wiped" not in out and "unprovisioned" not in out.lower():
+            out = _rtt_cmd(jl, "prov wipe", settle=2.0)   # retry — shell may have been mid-boot
+        if "identity wiped" not in out and "unprovisioned" not in out.lower():
+            raise RuntimeError(
+                "no 'identity wiped' response — this module is likely running a "
+                "production image (no RTT shell). Use the full chip erase instead.")
+        show = _rtt_cmd(jl, "prov show", settle=1.5)
+        serial = _grep1(show, "serial")
+        locked = _grep1(show, "locked")
+        on_step("wipe", f"after: serial={serial} locked={locked}")
+        on_step("wipe", "reset")
+        try:
+            jl.reset(halt=False)
+        except Exception:            # noqa: BLE001 — reset is best-effort; wipe already persisted
+            pass
+        return {"mode": "identity", "serial_after": serial, "locked_after": locked,
+                "wiped": serial in ("(unset)", "", None) and locked == "0"}
+    finally:
+        try:
+            jl.rtt_stop()
+        except Exception:            # noqa: BLE001
+            pass
+        jl.close()
+
+
+def erase_chip(on_step=step):
+    """Full mass-erase + APPROTECT recover (nrfjprog --recover). Leaves the
+    board blank — it must be reflashed (Program + Test) before use."""
+    on_step("wipe", "nrfjprog --recover (mass erase + unlock)")
+    nrfjprog("--recover", timeout=180)
+    on_step("wipe", "chip erased — board is blank, reflash to use")
+    return {"mode": "erase", "wiped": True}
+
+
+def wipe_module(mode="identity", on_step=step):
+    """Engineering wipe entry point. Never raises: any failure returns
+    {ok: False, error} so the agent can report it to the page."""
+    t0 = time.time()
+    try:
+        report = erase_chip(on_step) if mode == "erase" else wipe_identity(on_step)
+        report["ok"] = True
+    except Exception as e:           # noqa: BLE001 — surface any wipe failure to the caller
+        report = {"ok": False, "mode": mode, "error": str(e)}
+    report["elapsed_s"] = round(time.time() - t0, 1)
+    on_step("wipe", "done" if report.get("ok") else f"FAILED: {report.get('error')}")
+    return report
+
+
 # ── 4. Limits verdict ─────────────────────────────────────────────────────────
 
 def check_limits(values, limits):
@@ -255,7 +369,14 @@ def main():
     ap.add_argument("--flash", action="store_true", help="program bootloader+app before testing")
     ap.add_argument("--recover", action="store_true", help="full recover (erase) + program + test")
     ap.add_argument("--no-can", action="store_true", help="skip CAN stimulus (eoltest 0)")
+    ap.add_argument("--wipe", action="store_true", help="wipe NV identity (serial+PIN) over RTT, then exit")
+    ap.add_argument("--erase", action="store_true", help="full chip erase (nrfjprog --recover), then exit")
     args = ap.parse_args()
+
+    if args.wipe or args.erase:
+        report = wipe_module(mode="erase" if args.erase else "identity")
+        print(json.dumps(report, indent=2))
+        sys.exit(0 if report.get("ok") else 1)
 
     report = run_pipeline(do_flash=args.flash, recover=args.recover, use_can=not args.no_can)
     print(json.dumps(report, indent=2))
