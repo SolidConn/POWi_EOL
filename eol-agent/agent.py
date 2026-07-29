@@ -21,6 +21,7 @@ import asyncio
 import base64
 import hashlib
 import json
+import os
 import threading
 import time
 from pathlib import Path
@@ -57,6 +58,15 @@ async def handle(ws):
                 "staged_fw": staged_fw["versions"],
                 "cached_shas": [p.stem for p in FW_CACHE.glob("*.hex")],
             }))
+
+        elif cmd == "shutdown":
+            # OFF button on the /eol page. Refuse mid-cycle; otherwise exit cleanly
+            # (code 0) so start-agent.bat does NOT auto-restart it.
+            if run_lock.locked():
+                await ws.send(json.dumps({"event": "error", "message": "busy — can't stop mid-cycle"}))
+            else:
+                await ws.send(json.dumps({"event": "shutdown", "ok": True}))
+                threading.Timer(0.25, lambda: os._exit(0)).start()
 
         elif cmd == "firmware":
             # Stage admin firmware: [{role: boot|app, version, sha256, data_b64?}]

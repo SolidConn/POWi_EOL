@@ -31,7 +31,15 @@ if not errorlevel 1 (
 echo.
 echo Starting EOL jig agent...  (close this window to stop it)
 python agent.py
+REM Clean exit (code 0) = deliberate Stop from the /eol page → don't restart.
+REM Non-zero = crash → auto-restart after 3s.
+if not errorlevel 1 (
+  echo.
+  echo Agent stopped ^(shutdown requested from the /eol page^).
+  timeout /t 2 >nul
+  exit /b 0
+)
 echo.
-echo Agent exited. Restarting in 3s...  (close this window to stop)
+echo Agent crashed. Restarting in 3s...  (close this window to stop)
 timeout /t 3 >nul
 goto loop
