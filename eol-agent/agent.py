@@ -31,7 +31,7 @@ import websockets
 from eol_run import run_pipeline, CanStim, wipe_module
 from phase2 import run_phase2
 
-VERSION = "0.3"
+VERSION = "0.4"   # 0.4: signed-fw flashing via nrfutil (recover + KMU provision + program)
 PORT = 9151
 
 run_lock = threading.Lock()

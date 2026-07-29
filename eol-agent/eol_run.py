@@ -1,7 +1,7 @@
 """Phase-1 EOL pipeline — the M3 jig agent's core.
 
 One command does what the operator did by hand tonight:
-  1. flash    : nrfjprog recover(optional) + program bootloader & signed app + reset
+  1. flash    : nrfutil recover + provision KMU key + program bootloader & signed app + reset
   2. can      : start recipe-frame TX on PCAN (BEFORE eoltest — the sampling
                 window must overlap live traffic; validated 2026-07-10)
   3. eoltest  : RTT `eoltest <wait>` -> parse EOL:key=value until EOL:done=1
@@ -31,6 +31,20 @@ DEVICE      = "nRF54L15_M33"
 FW_DIR      = Path(r"D:\powifirmware\build")
 BOOT_HEX    = FW_DIR / "mcuboot" / "zephyr" / "zephyr.hex"
 APP_HEX     = FW_DIR / "powifirmware" / "zephyr" / "zephyr.signed.hex"   # NOT merged.hex — NV must stay blank
+
+# Flashing tool. From 1.0.7 the firmware is SIGNED with the production Ed25519 key,
+# held in the nRF54L15 KMU. nrfjprog CANNOT program the KMU-protected image
+# ("nrfjprog DLL does not yet support this feature in your device") nor provision
+# the KMU key at all — Nordic has retired it for the 54L series. So the flash path
+# uses nrfutil (nRF Util) `device`, which handles both. KEYFILE is the PUBLIC half
+# of the signing key (build/keyfile.json from the signed build); it is constant as
+# long as the signing key doesn't change. Copy it in alongside this script.
+NRFUTIL     = r"C:\Users\grigo\tools\nrfutil.exe"
+KEYFILE     = HERE / "keyfile.json"
+# Erase only the ranges each image writes (keeps the just-provisioned KMU key),
+# verify by read-back, and don't reset between images — we reset once at the end.
+# (This J-Link OB rejects verify=VERIFY_HASH: "not supported yet in the probe-plugin".)
+PROG_OPTS   = "chip_erase_mode=ERASE_RANGES_TOUCHED_BY_FIRMWARE,verify=VERIFY_READ,reset=RESET_NONE"
 PCAN_CHANNEL = "PCAN_USBBUS1"
 CAN_BITRATE  = 500000
 CAN_WAIT_S   = 5
@@ -59,18 +73,44 @@ def nrfjprog(*args, timeout=120):
     return r.stdout
 
 
+def nrfutil(*args, timeout=180):
+    # Pin the known-good J-Link DLL (V8.24) — nrfutil's bundled default couldn't
+    # reach the nRF54L15 debug port; V8.24 (same DLL nrfjprog uses) does.
+    cmd = [NRFUTIL, "device", *args, "--jlink-dll", JLINK_DLL]
+    r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    if r.returncode != 0:
+        raise RuntimeError(f"nrfutil device {' '.join(args)} failed:\n{r.stdout}\n{r.stderr}")
+    return r.stdout
+
+
 def flash(recover=False, on_step=step, boot_hex=None, app_hex=None):
+    """Flash a SIGNED nRF54L15 unit via nrfutil (see NRFUTIL note above).
+
+    The KMU flow always requires a recover (to erase + unlock so the public key
+    can be provisioned), so a recover happens regardless of the `recover` arg —
+    which is kept only for call-site compatibility. Steps mirror `west flash
+    --recover`: recover → provision KMU key → program bootloader + app → reset."""
     boot = Path(boot_hex) if boot_hex else BOOT_HEX
     app = Path(app_hex) if app_hex else APP_HEX
-    if recover:
-        on_step("flash", "recover (full erase)")
-        nrfjprog("--recover")
+    if not KEYFILE.exists():
+        raise RuntimeError(
+            f"KMU keyfile missing: {KEYFILE}\n"
+            "Copy build/keyfile.json from the signed firmware build next to eol_run.py."
+        )
+    # 1. Recover: mass-erase + unlock. Required before KMU provisioning.
+    on_step("flash", "recover (erase + unlock)")
+    nrfutil("recover")
+    # 2. Provision the MCUboot public key into the KMU (what `west flash --recover` does).
+    on_step("flash", "provision KMU key")
+    nrfutil("x-provision-keys", "--key-file", str(KEYFILE))
+    # 3. Program bootloader then app. ERASE_RANGES_TOUCHED_BY_FIRMWARE keeps the KMU intact.
     on_step("flash", f"program bootloader {boot.name}")
-    nrfjprog("--program", str(boot), "--sectorerase", "--verify")
+    nrfutil("program", "--firmware", str(boot), "--options", PROG_OPTS)
     on_step("flash", f"program app {app.name}")
-    nrfjprog("--program", str(app), "--sectorerase", "--verify")
+    nrfutil("program", "--firmware", str(app), "--options", PROG_OPTS)
+    # 4. Reset into the app.
     on_step("flash", "reset")
-    nrfjprog("--reset")
+    nrfutil("reset")
     time.sleep(2.0)   # let the app boot before RTT attach
 
 
@@ -351,8 +391,10 @@ def run_pipeline(do_flash=False, recover=False, use_can=True, on_step=step,
         # wearing the customer application, never the shell/RTT EOL image.
         if report["verdict"] == "PASS" and prod_hex:
             on_step("flash", f"production image {prod_version or ''} (replacing EOL image)")
-            nrfjprog("--program", str(prod_hex), "--sectorerase", "--verify")
-            nrfjprog("--reset")
+            # KMU key was provisioned in the initial flash and survives a
+            # ranges-touched erase, so the production image just overwrites the app.
+            nrfutil("program", "--firmware", str(prod_hex), "--options", PROG_OPTS)
+            nrfutil("reset")
             report["production_flashed"] = prod_version or True
 
     except Exception as e:               # noqa: BLE001 — any pipeline error is a FAIL with reason
