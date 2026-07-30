@@ -1,3 +1,6 @@
 __pycache__/
 *.pyc
 eol-agent/fw_cache/
+
+# KMU public-key provisioning file — station-local, regenerable from a firmware build (build/keyfile.json)
+eol-agent/keyfile.json
