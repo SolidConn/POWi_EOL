@@ -1,6 +1,6 @@
 {
-  "_comment": "Phase-1 EOL limits. Bench-load values from the validated 2026-07-10 run (OUT3 456 mA, OUT4 1522 mA @ 11.76 V). Adjust per jig fixture loads; will move to an admin-versioned table (M5). 2026-07-29: OUT4 floor lowered 1200->100 mA — current fixture load draws ~839 mA on OUT4; the floor is now a 'switches + conducts' presence check, max still guards against a short/overcurrent.",
-  "version": 2,
+  "_comment": "Phase-1 EOL limits. Bench-load values from the validated 2026-07-10 run (OUT3 456 mA, OUT4 1522 mA @ 11.76 V). Adjust per jig fixture loads; will move to an admin-versioned table (M5). 2026-07-29: OUT4 floor lowered 1200->100 mA — current fixture load draws ~839 mA on OUT4; the floor is now a 'switches + conducts' presence check, max still guards against a short/overcurrent. 2026-08-05: can_rx/can_rx_rate now skip_values ['skip'] — a --no-can run was scoring a hardware FAIL on a board that never failed anything (firmware now also emits can_rx_rate=skip in that branch).",
+  "version": 3,
   "checks": {
     "vbat_mv":        { "min": 9000,  "max": 15000 },
     "temp_dc":        { "min": 50,    "max": 600 },
@@ -12,8 +12,8 @@
     "out4_on_ma":     { "min": 100,   "max": 1900 },
     "out4_on_status": { "equals": "OK" },
     "out4_fault":     { "equals": "OK" },
-    "can_rx":         { "equals": "1" },
-    "can_rx_rate":    { "min": 1 }
+    "can_rx":         { "equals": "1", "skip_values": ["skip"] },
+    "can_rx_rate":    { "min": 1, "skip_values": ["skip"] }
   },
   "required_keys": ["chipid", "fw", "vbat_mv", "temp_dc", "can_rx"]
 }
