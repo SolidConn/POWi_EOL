@@ -161,9 +161,15 @@ async def run_phase2(serial: str, pin: str, on_step=lambda n, m="": None, dry=Fa
             on_step("provision", f"LOCKED as {back_serial}")
             try:
                 await client.write_gatt_char(PROV_CHAR, bytes([0x03]), response=True)
-            except Exception:      # noqa: BLE001 — clearing bonds may drop the link
-                pass
-            on_step("provision", "bonds cleared")
+                on_step("provision", "bonds cleared")
+            except Exception as e:      # noqa: BLE001 — this connection was never
+                # paired (virgin modules are factory-open), so the firmware's
+                # locked-only auth gate rejects this write every time on the
+                # normal path — there is no bond to clear here. Log the real
+                # outcome instead of unconditionally claiming success; a
+                # returned unit's stale bond is cleared by prov_wipe() at
+                # rework time (RTT), not by this step.
+                on_step("provision", f"bond-clear write skipped/rejected ({e}) — expected on a virgin module")
             report["verdict"] = "PASS"
             report["provisioned"] = True
             on_step("verdict", "PASS — provisioned + locked")
