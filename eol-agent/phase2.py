@@ -59,9 +59,17 @@ async def run_phase2(serial: str, pin: str, on_step=lambda n, m="": None, dry=Fa
                 candidates[dev.address] = (dev, adv.rssi, name)
         if not candidates:
             raise RuntimeError("no unprovisioned module (POWi-*) advertising")
-        dev, rssi, name = max(candidates.values(), key=lambda c: c[1])
         if len(candidates) > 1:
-            on_step("scan", f"{len(candidates)} modules in range — taking strongest ({name} @ {rssi} dBm)")
+            # No mac/chip_id is passed in to disambiguate (see EOL-PLAN's
+            # identity model), so picking "strongest RSSI" risks binding the
+            # scanned serial/PIN to a DIFFERENT physical unit than the one
+            # the operator labeled. Fail closed instead of guessing - power
+            # only one virgin module at a time near the station.
+            names = ", ".join(f"{n} ({a})" for a, (_, _, n) in candidates.items())
+            raise RuntimeError(
+                f"{len(candidates)} unprovisioned modules in range ({names}) - "
+                "power only one virgin module near the station at a time")
+        dev, rssi, name = next(iter(candidates.values()))
         on_step("connect", f"{name} ({dev.address}, {rssi} dBm)")
         report["mac"] = dev.address
 
