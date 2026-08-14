@@ -23,7 +23,17 @@ import threading
 import time
 from pathlib import Path
 
-HERE = Path(__file__).parent
+
+def app_dir() -> Path:
+    """Directory to read/write config and cache from — the frozen exe's own
+    folder when run via PyInstaller (--onefile unpacks __file__ into a throwaway
+    temp dir), else the script's folder."""
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).parent
+    return Path(__file__).parent
+
+
+HERE = app_dir()
 
 # ── Station configuration (jig-specific; agent config file later) ─────────────
 JLINK_DLL   = r"C:\Program Files\SEGGER\JLink_V824\JLink_x64.dll"

@@ -24,11 +24,10 @@ import json
 import os
 import threading
 import time
-from pathlib import Path
 
 import websockets
 
-from eol_run import run_pipeline, CanStim, wipe_module
+from eol_run import app_dir, run_pipeline, CanStim, wipe_module
 from phase2 import run_phase2
 
 VERSION = "0.4"   # 0.4: signed-fw flashing via nrfutil (recover + KMU provision + program)
@@ -38,7 +37,7 @@ run_lock = threading.Lock()
 
 # Admin-staged firmware: the /eol page downloads the latest PUBLISHED hexes
 # from the admin and pushes them here (sha-keyed cache, survives restarts).
-FW_CACHE = Path(__file__).parent / "fw_cache"
+FW_CACHE = app_dir() / "fw_cache"
 FW_CACHE.mkdir(exist_ok=True)
 staged_fw = {"boot": None, "app": None, "prod": None, "versions": {}}   # role -> cached path
 

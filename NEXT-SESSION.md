@@ -1,4 +1,4 @@
-# EOL — working brief (updated 2026-07-10, end of day)
+# EOL — working brief (updated 2026-08-08)
 
 You are in `D:\Solid Connectivity APPS\powi-eol` — the EOL project home.
 Read `EOL-PLAN.md` (canonical plan) and `README.md` (repo split) first.
@@ -11,6 +11,64 @@ everything needed lives in the repos, none of it in session memory. Doc map:
 - Firmware repo `HANDOFF.md` §"EOL provisioning + self-test" — FW-A/B/C
   as-built (NV identity, GATT c1a50060/61 opcodes, eoltest, adv naming).
 - Build/flash/deploy procedures — app repo `SESSION-HANDOFF-2026-07-06.md` §1.
+
+## Session 2026-08-08 — bug fixes, agent packaging, admin audit
+
+A cross-system review (firmware + `POWi app` + this repo) found and fixed 4 bugs
+here, all committed on the current branch:
+
+| Commit | Fix |
+|---|---|
+| `4dfe8f0` | A `--no-can` bench run (no CAN harness attached) was being scored a hardware **FAIL** on `can_rx`/`can_rx_rate` instead of skipped. `limits.json` rules for both now accept `"skip_values": ["skip"]` (bumped to `"version": 3`); firmware's `eoltest` (see firmware repo, commit `b09db32`) now emits `can_rx_rate=skip` to match, alongside the pre-existing `can_rx=skip`. |
+| `7db973d` | Phase-2 candidate scan picked the **strongest-RSSI** unprovisioned module when several were in range — silently binding the wrong physical unit if two virgin boards sat near the station together. Now **fails closed**: raises with the count + names and asks the operator to power only one virgin module at a time. |
+| `48b605d` | The bond-clear step during provisioning logged "bonds cleared" even when the write was rejected/failed (bare `except: pass`) — gave false confidence the module's bond list was actually wiped. Now logs the real outcome, and treats a failed write as expected/benign on a virgin (never-bonded) module rather than hiding it. |
+| `8798b06` | `eol-agent/keyfile.json` (station-local KMU public key, regenerable, not a secret) added to `.gitignore` — was previously untracked-but-visible clutter. |
+
+### PyInstaller packaging — NOW COMMITTED (was the uncommitted WIP flagged earlier)
+
+An earlier note in this file flagged uncommitted packaging WIP and warned against
+discarding it. That work is now finished, tested and committed:
+
+- `eol-agent/build-release.bat` (new) — builds a distributable release: PyInstaller
+  onefile `agent.exe` + the three launcher `.bat`s + a generated `SETUP.txt`, zipped
+  to `eol-agent/release/eol-agent-v<VERSION>.zip`. VERSION is read from `agent.py`.
+- `app_dir()` in `eol_run.py` — returns the **exe's own folder** when frozen
+  (`sys.frozen`), else the script folder. Required: under `--onefile`, `__file__`
+  resolves into a throwaway temp dir, so `fw_cache/`, `keyfile.json` and
+  `limits.json` would be lost every run. `agent.py`'s `FW_CACHE` uses it too.
+- `start-agent.bat` — runs a bundled `agent.exe` if one sits beside it, else falls
+  back to `python agent.py` (source checkout). Exit-code semantics unchanged:
+  0 = deliberate stop from the /eol page, non-zero = crash → restart after 3 s.
+- `.gitignore` — PyInstaller output (`build/`, `dist/`, `release/`, `*.spec`).
+
+⚠️ **Caveat on `build-release.bat`:** a prior session had left an untracked file at
+that path. It was overwritten this session before its contents were read, and git
+keeps no history of untracked files, so any earlier version is unrecoverable. The
+committed version was actually run: it produced `agent.exe` (27 MB), which was
+smoke-tested from a clean folder containing only the exe — bound `:9151`, answered
+a `status` command with `version 0.4`, created `fw_cache/` beside itself, and shut
+down cleanly on the `shutdown` command. Eduard chose to keep it (2026-08-08).
+
+**Still NOT portable to a second station.** `eol_run.py` hardcodes
+`NRFUTIL = C:\Users\grigo\tools\nrfutil.exe` and `FW_DIR = D:\powifirmware\build`
+(the latter is only a dev-CLI default — the ws flow gets hexes staged from the
+admin). The zip removes the Python/pip step, not the J-Link/PCAN/nrfutil installs.
+
+### Admin: jig-agent download + audit (see admin repo)
+
+- **Jig agent is downloadable from `/eol`** — admin branch `feat/eol-m1` @ `5e3c778`,
+  deployed 2026-08-08 (worker `f4e43e0e`), remote D1 migrated (`0040_eol_agent_releases`).
+  Build a zip with `build-release.bat`, upload + publish it in the admin panel inside
+  the `/eol` help block. ⚠️ **No release is published yet** — the download link 404s
+  until one is uploaded.
+- **`AUDIT-2026-08-08.md` (admin repo)** — four-pass review of the whole admin app.
+  **Two criticals are live:** the public API key is committed in `API.md` and still
+  authenticates against production, and `/api/app-settings` serves the EOL QR signing
+  secret to every logged-in role (including the `operator` account). Read that file
+  before touching the admin.
+- **`EOL-LIMITS-BRIEF.md` (admin repo)** — Eduard's 2026-08-14 request to manage
+  Phase-1 test limits from the admin instead of hand-editing `limits.json` on the
+  station. Design proposal + open questions; not started.
 
 ## Where to start
 

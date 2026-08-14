@@ -4,3 +4,9 @@ eol-agent/fw_cache/
 
 # KMU public-key provisioning file — station-local, regenerable from a firmware build (build/keyfile.json)
 eol-agent/keyfile.json
+
+# PyInstaller build output + packaged releases (built by build-release.bat, uploaded to admin — not committed)
+eol-agent/build/
+eol-agent/dist/
+eol-agent/release/
+eol-agent/*.spec
